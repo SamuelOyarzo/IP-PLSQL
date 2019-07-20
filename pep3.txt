@@ -1,0 +1,122 @@
+--profe usted me dijo que lo dejara asi cuando le pregunte no inserta
+--1
+CREATE OR REPLACE TRIGGER tr_bono
+after  INSERT OR delete ON medicamentos
+for each row
+declare 
+    v_bono number;
+   
+BEGIN
+
+    if inserting then
+    select bono into v_bono from remedio  
+    where id_rem = :new.id_rem ;
+        UPDATE fichapac_detalle
+         SET bonofarma = v_bono+bonofarma
+           WHERE numero = :new.numero;
+    elsif deleting then
+        select bono into v_bono from remedio  
+    where id_rem = :new.id_rem ;
+         UPDATE fichapac_detalle
+         SET bonofarma = bonofarma-v_bono
+        WHERE numero = :new.numero;
+    end if; 
+end; 
+INSERT INTO medicamentos VALUES (50, 6, 'uno al dia por 15 dias');      
+
+--2
+create sequence seq_error;
+
+CREATE SEQUENCE numbol START WITH 1;
+
+create or replace package pkg_pep is
+    function fn_edad(p_edad number) return number;
+    function fn_salud(p_salud number) return number;
+    function fn_atencion(p_cant number) return number;
+    procedure pr_graba_error (p_fproceso varchar2, p_subprog varchar2,
+            p_descrip varchar2);
+end;
+/
+create or replace package body pkg_pep is
+    function fn_edad(p_edad number) return number is
+        v_porc number;
+        v_nds varchar2(300);
+    begin
+        v_nds:='select porcentaje from descuentoedad
+            where :vb_edad between edad_ini and edad_fin';
+        execute immediate v_nds  into v_porc using p_edad;
+        return v_porc;
+    end fn_edad;   
+    
+    function fn_salud(p_salud number) return number is
+        v_porc number;
+        v_nds varchar2(300);
+    begin
+        v_nds:='select porcentaje from salud
+            where :vb_salud=id_salud';
+        execute immediate v_nds  into v_porc using p_salud;
+        return v_porc;
+    end fn_salud;
+    
+    function fn_atencion(p_cant number) return number is
+        v_porc number;
+        v_nds varchar2(300);
+    begin
+        v_nds:='select porcentaje from porce_cantidad_atenciones
+            where :vb_cant between atencion_inf and atencion_sup';
+        execute immediate v_nds  into v_porc using p_cant;
+        return v_porc;
+    end fn_atencion;
+    
+    procedure pr_graba_error (p_fproceso varchar2, p_subprog varchar2,
+            p_descrip varchar2) as
+        v_id_cursor integer;
+        v_filas integer;
+    begin
+        v_id_cursor:=dbms_sql.open_cursor;
+        dbms_sql.parse(v_id_cursor,'insert into errores_proceso_atenmedicas
+            values (:1,:2,:3,:4)',dbms_sql.native);
+        dbms_sql.bind_variable(v_id_cursor,':1',seq_error.nextval);
+        dbms_sql.bind_variable(v_id_cursor,':2',p_fproceso);
+        dbms_sql.bind_variable(v_id_cursor,':3',p_subprog);
+        dbms_sql.bind_variable(v_id_cursor,':4',p_descrip);
+        v_filas:=dbms_sql.execute(v_id_cursor);
+        dbms_sql.close_cursor(v_id_cursor);
+    end;
+end pkg_pep;
+--drop package pkg_pep;
+
+ create or replace procedure  proc_pep is
+    v_mensaje varchar2(200);
+    v_numero number;
+    v_valor number;
+    v_fechaconsulta date;
+    v_sintoma varchar2 (260);
+    v_salud number;
+    v_edad number;
+    v_cant number;
+    v_esp number;
+    v_valorconsulta number;
+    verdad number;
+    vmed number;
+    vrut number;
+begin
+select valorconsulta into v_valor from fichapac_detalle;
+SELECT ID_ESP into vmed FROM MEDICO;
+select count(rutpac) into vrut from paciente;
+select to_char(sysdate,'yyyy')-to_char(fechanac,'yyyy') into verdad from paciente;
+ select numero,fechaconsulta,sintoma,pkg_pep.fn_salud(vmed),pkg_pep.fn_edad(verdad),pkg_pep.fn_atencion(vrut),fn_especialidad(vmed)
+ into v_numero,v_fechaconsulta,v_sintoma,v_salud,v_edad,v_cant,v_esp from fichapac_detalle; 
+ 
+     
+v_valorconsulta:=v_valor-v_cant-v_salud-v_edad-v_esp;
+    
+
+insert into boleta values (numbol.nextval,v_numero,v_fechaconsulta,v_sintoma,v_valorconsulta);
+  exception WHEN OTHERS THEN
+   dbms_output.put_line('El valor no puede ingresado');
+ end; 
+
+execute proc_pep;
+
+select*from boleta

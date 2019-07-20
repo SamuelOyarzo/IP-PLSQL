@@ -1,0 +1,310 @@
+--Integrantes
+--Sergio coyopae
+--Darien Manriquez
+
+--a)
+declare
+nro number;
+nrocli number;
+fechasol date;
+fechacre date;
+monto number;
+montocre number;
+nrocuota number;
+tipocre number;
+sucursal number;
+
+begin
+nro:=1111;
+nrocli:=5;
+fechasol :='20/03/2019';
+fechacre:=  '22/03/2019';
+monto:=  3000000;
+montocre:=  3200000;
+nrocuota:=  48;
+tipocre:=  2;
+sucursal:=  6011;
+
+insert into credito_cliente  values (nro,nrocli,fechasol,fechacre,monto,montocre,nrocuota,tipocre,sucursal)  ;
+end;
+
+--b
+declare
+nro number;
+nrocli number;
+fechasol date;
+fechacre date;
+monto number;
+montocre number;
+nrocuota number;
+tipocre number;
+sucursal number;
+
+begin
+nro:=2222;
+nrocli:=130;
+fechasol :='12/03/2019';
+fechacre:=  '13/03/2019';
+monto:=  800000;
+montocre:=  860000;
+nrocuota:=  36;
+tipocre:=  2;
+sucursal:=  13132;
+
+insert into credito_cliente  values (nro,nrocli,fechasol,fechacre,monto,montocre,nrocuota,tipocre,sucursal)  ;
+end;
+
+--c
+
+declare
+nro number;
+nrocli number;
+fechasol date;
+fechacre date;
+monto number;
+montocre number;
+nrocuota number;
+tipocre number;
+sucursal number;
+
+begin
+nro:=3333;
+nrocli:=130;
+fechasol :='10/03/2019';
+fechacre:=  '13/03/2019';
+monto:=  12000000;
+montocre:=  14500000;
+nrocuota:=  36;
+tipocre:=  2;
+sucursal:=  13132;
+
+insert into credito_cliente  values (nro,nrocli,fechasol,fechacre,monto,montocre,nrocuota,tipocre,sucursal)  ;
+end;
+
+
+delete from credito_cliente where nro_solic_credito=2015;
+
+--d
+
+CREATE OR REPLACE TRIGGER trigger_update_puntostodosuma
+AFTER INSERT
+    ON credito_cliente
+FOR EACH ROW
+
+DECLARE
+    v_nro_cliente NUMBER;
+    v_monto_solicitado NUMBER(10);
+    v_puntos_actuales NUMBER(8);
+    v_i NUMBER := 0;
+BEGIN
+    
+    SELECT NRO_CLIENTE, MONTO_SOLICITADO INTO v_nro_cliente, v_monto_solicitado FROM credito_cliente;
+    SELECT TOTAL_PUNTOS INTO v_puntos_actuales FROM puntos_todo_suma;
+    
+    LOOP
+    v_monto_solicitado := v_monto_solicitado - 1;
+    v_i := v_i + 1;
+    IF v_i = 100000 THEN
+        
+        v_puntos_actuales := v_puntos_actuales + 1200;
+        v_i := 0; 
+    END IF;
+        
+        EXIT WHEN v_monto_solicitado > 100000;
+    END LOOP;
+    
+   
+    INSERT INTO puntos_todo_suma VALUES (v_nro_cliente, v_monto_solicitado, sysdate);
+
+EXCEPTION
+    WHEN OTHERS THEN 
+    
+    UPDATE puntos_todo_suma SET TOTAL_PUNTOS = v_puntos_actuales, FECHA_ACTUALIZACION = SYSDATE WHERE NRO_CLIENTE = v_nro_cliente;
+END;
+
+CREATE OR REPLACE TRIGGER trigger_delete_puntostodosuma
+BEFORE DELETE 
+    ON credito_cliente
+FOR EACH ROW
+
+DECLARE
+    v_nro_cliente NUMBER;
+    v_monto_solicitado NUMBER(10);
+    v_puntos_actuales NUMBER(8);
+    v_i NUMBER := 0;
+BEGIN
+   
+    SELECT NRO_CLIENTE, MONTO_SOLICITADO INTO v_nro_cliente, v_monto_solicitado FROM credito_cliente;
+    SELECT TOTAL_PUNTOS INTO v_puntos_actuales FROM puntos_todo_suma;
+    
+   
+    LOOP
+    v_monto_solicitado := v_monto_solicitado - 1;
+    v_i := v_i + 1;
+    IF v_i = 100000 THEN
+        
+        v_puntos_actuales := v_puntos_actuales - 1200;
+        v_i := 0;
+    END IF;
+       
+        EXIT WHEN v_monto_solicitado > 100000;
+    END LOOP;
+    
+    
+    UPDATE puntos_todo_suma SET TOTAL_PUNTOS = v_puntos_actuales, FECHA_ACTUALIZACION = SYSDATE WHERE NRO_CLIENTE = v_nro_cliente;
+END;
+
+INSERT INTO puntos_todo_suma VALUES ('130','153600','13/03/2019');
+
+select * from puntos_todo_suma;
+
+
+
+
+-- ETPBY_FA
+CREATE OR REPLACE PROCEDURE FOTITOS IS
+    CURSOR C1 IS SELECT NUMRUN, FOTO FROM CLIENTE;
+    V_BLOB      BLOB;
+    V_BFILE     BFILE;
+    V_ERRMSG VARCHAR2(100);
+    HORA VARCHAR2(30);
+BEGIN
+    FOR R1 IN C1 LOOP
+        BEGIN
+        
+            SELECT TO_CHAR( SYSDATE, 'HH24:MI' )INTO HORA from DUAL;
+            IF HORA = '22:00' THEN
+            
+                UPDATE CLIENTE
+                SET FOTO = EMPTY_BLOB()
+                WHERE NUMRUN = R1.NUMRUN
+                RETURNING FOTO INTO V_BLOB;
+                V_BFILE := BFILENAME('DIR_BLOB', TRIM(R1.NUMRUN)||'.jpg');
+                DBMS_LOB.OPEN(V_BFILE, DBMS_LOB.LOB_READONLY);
+                DBMS_LOB.LOADFROMFILE(V_BLOB, V_BFILE, DBMS_LOB.GETLENGTH(V_BFILE));
+                DBMS_LOB.CLOSE(V_BFILE);
+                
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                 V_ERRMSG := SQLERRM;
+                 INSERT INTO ERROR_CREDITOS_MENSUALES VALUES (SEQ_ERROR.NEXTVAL, 'Error, no se encontró el archivo para el RUN '|| R1.NUMRUN, V_ERRMSG);
+        END;
+           
+    END LOOP;
+    COMMIT;
+END;
+
+
+--3
+create sequence numbol start with 1;
+CREATE OR REPLACE PACKAGE PKG_EXAMEN IS
+    VALOR_1 NUMBER := 0;
+    VALOR_2 NUMBER := 0;
+    VALOR_3 NUMBER := 0;
+    VALOR_4 NUMBER := 0;
+    FUNCTION FN_PRIMERA_CUOTA (P_NROSOLCRED NUMBER) RETURN DATE;
+    FUNCTION FN_ULTIMA_CUOTA (P_NROSOLCRED NUMBER) RETURN DATE;
+END;
+
+CREATE OR REPLACE PACKAGE BODY PKG_EXAMEN IS
+    FUNCTION FN_PRIMERA_CUOTA (P_NROSOLCRED NUMBER) RETURN DATE IS
+        V_PRIMERA_CUOTA DATE;
+    BEGIN
+        SELECT FECHA_VENC_CUOTA INTO V_PRIMERA_CUOTA
+        FROM CUOTA_CREDITO_CLIENTE
+        WHERE NRO_SOLIC_CREDITO = P_NROSOLCRED AND NRO_CUOTA = 1;
+        
+        RETURN V_PRIMERA_CUOTA;
+    END;
+    
+    FUNCTION FN_ULTIMA_CUOTA (P_NROSOLCRED NUMBER) RETURN DATE IS
+        V_ULTIMA_CUOTA  DATE;
+        V_MAXNROCUOTA   NUMBER;
+    BEGIN
+        SELECT MAX(NRO_CUOTA) INTO V_MAXNROCUOTA
+        FROM CUOTA_CREDITO_CLIENTE
+        WHERE NRO_SOLIC_CREDITO = P_NROSOLCRED;
+        
+        SELECT FECHA_VENC_CUOTA INTO V_ULTIMA_CUOTA
+        FROM CUOTA_CREDITO_CLIENTE
+        WHERE NRO_SOLIC_CREDITO = P_NROSOLCRED AND NRO_CUOTA = V_MAXNROCUOTA;
+        
+        RETURN V_ULTIMA_CUOTA;
+    END;
+END;
+
+
+
+CREATE OR REPLACE FUNCTION FN_REGION_SUCURSAL (P_NROSOLCRED NUMBER)
+RETURN VARCHAR2 IS
+    V_REGION    REGION.NOMBRE_REGION%TYPE;
+BEGIN
+    SELECT R.NOMBRE_REGION
+    INTO V_REGION
+    FROM CREDITO_CLIENTE CC
+    JOIN SUCURSAL_BANCO SB ON CC.ID_SUCURSAL = SB.ID_SUCURSAL
+    JOIN REGION R ON R.COD_REGION = SB.COD_REGION
+    WHERE CC.NRO_SOLIC_CREDITO = P_NROSOLCRED;
+    
+    RETURN V_REGION;
+END;
+
+CREATE OR REPLACE FUNCTION FN_PROVINCIA_SUCURSAL (P_NROSOLCRED NUMBER)
+RETURN VARCHAR2 IS
+    V_PROVINCIA    PROVINCIA.NOMBRE_PROVINCIA%TYPE;
+BEGIN
+    SELECT P.NOMBRE_PROVINCIA
+    INTO V_PROVINCIA
+    FROM CREDITO_CLIENTE CC
+    JOIN SUCURSAL_BANCO SB ON CC.ID_SUCURSAL = SB.ID_SUCURSAL
+    JOIN PROVINCIA P ON P.COD_PROVINCIA = SB.COD_PROVINCIA
+    WHERE CC.NRO_SOLIC_CREDITO = P_NROSOLCRED AND P.COD_REGION = SB.COD_REGION;
+    
+    RETURN V_PROVINCIA;
+END;
+
+CREATE OR REPLACE FUNCTION FN_COMUNA_SUCURSAL (P_NROSOLCRED NUMBER)
+RETURN VARCHAR2 IS
+    V_COMUNA    COMUNA.NOMBRE_COMUNA%TYPE;
+BEGIN
+    SELECT C.NOMBRE_COMUNA
+    INTO V_COMUNA
+    FROM CREDITO_CLIENTE CC
+    JOIN SUCURSAL_BANCO SB ON CC.ID_SUCURSAL = SB.ID_SUCURSAL
+    JOIN COMUNA C ON C.COD_COMUNA = SB.COD_COMUNA
+    WHERE CC.NRO_SOLIC_CREDITO = P_NROSOLCRED
+    AND C.COD_PROVINCIA = SB.COD_PROVINCIA AND C.COD_REGION = SB.COD_REGION;
+    
+    RETURN V_COMUNA;
+    
+    END;
+
+
+declare 
+fechacre date;
+fechaoto date;
+sucursal number;
+region varchar2;
+provincia varchar2;
+comuna varchar2;
+numero number;
+solicitud number;
+tipocre varchar2;
+numerocli number;
+begin
+select FECHA_VENC_CUOTA into fechacre from cuota_credito_cliente;
+select MAX(NRO_CUOTA) into fechaoto from CUOTA_CREDITO_CLIENTE;
+select id_sucursal into sucursal from detalle_creditos_mensuales;
+select NOMBRE_REGION into region from region;
+select NOMBRE_COMUNA into comuna from comuna;
+select NOMBRE_PROVINCIA into provincia from provincia;
+select nro_solic_credito into solicitud from credito_cliente;
+select nombre_credito into tipocre from credito;
+select nro_cliente into numerocli from credito_cliente;
+insert into detalle_creditos_mensuales values
+    (numbol.nextval,PKG_EXAMEN.FN_PRIMERA_CUOTA(fechacre),PKG_EXAMEN.FN_ULTIMA_CUOTA(fechaoto),sucursal,FN_REGION_SUCURSAL (region),FN_PROVINCIA_SUCURSAL(provincia),FN_COMUNA_SUCURSAL(comuna)
+    ,solicitud,tipocre,numerocli);
+    end;
+
+SELECT * FROM detalle_creditos_mensuales;

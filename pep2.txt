@@ -1,0 +1,165 @@
+--como usuario system
+create directory fotos as 'c:\fotos';
+grant read, write on directory fotos to p2;
+
+--como usuario p2
+alter table medico add foto blob default empty_blob();
+create sequence seq_error;
+create table errores (
+numero number primary key,
+descripcion varchar2(30) not null,
+mensaje varchar2(200) not null);
+
+DECLARE
+  cursor cur_med is select rutmed from medico;
+  v_bfile BFILE; 
+  v_blob BLOB;
+  V_NOMARCH VARCHAR2(30);
+BEGIN
+  FOR v_reg IN cur_med LOOP
+    BEGIN
+        SELECT foto into v_blob 
+        FROM medico 
+        WHERE rutmed = v_reg.rutmed FOR UPDATE;
+        V_NOMARCH:= v_reg.rutmed || '.jpg'; 
+        v_bfile:= BFILENAME('FOTOS',V_NOMARCH);
+        dbms_lob.open(v_bfile, dbms_lob.lob_readonly);
+        dbms_lob.loadfromfile(v_blob, v_bfile,dbms_lob.getlength(v_bfile));
+        DBMS_LOB.CLOSE(v_bfile);
+        COMMIT;
+    EXCEPTION
+        WHEN OTHERS THEN
+            insert into errores values (seq_error.nextval,'Actualizando Fotos',
+            SQLERRM);
+    END;
+  END LOOP;
+END;
+
+Ejercicio 2
+
+VARIABLE periodo number;
+
+declare
+    cursor cur_med is select rutmed, fecha_contrato, monto_meta,
+       c.nombre nom_ciudad, c.porcentaje, precio, valor  from medico a join comuna b on
+       (a.id_comuna = b.id_comuna) join ciudad c on
+       (b.id_ciudad = c.id_ciudad) join titulo d on
+       (a.id_tit = d.id_tit) left join especialidad e on
+       (a.id_esp = e.id_esp);
+    cursor cur_cargas (p_rutmed varchar2) is 
+        select fecha_nac from cargas_familiares
+            where rutmed = p_rutmed;
+    v_mensaje varchar2(200);
+    v_cant_ate number;
+    v_sbase number;
+    v_p_ca number;
+    v_mcan_ate number;
+    v_antig number;
+    v_p_ma number;
+    v_mate number;
+    v_m_ciudad number;
+    v_mmeta number;
+    v_suma_b number;
+    v_bono number;
+    v_edad number;
+    v_annos number;
+    v_suma_total number;
+begin
+    :periodo:='012019';
+    for v_reg in cur_med loop
+        v_cant_ate:=0;
+        v_sbase:=0;
+        v_p_ca:=0;
+        v_mcan_ate:=0;
+        v_antig:=0;
+        v_p_ma:=0;
+        v_mate:=0;
+        v_m_ciudad:=0;
+        v_mmeta:=0;
+        v_annos:=0;
+        v_suma_total:=0;
+        begin
+            select count(*)
+                into v_cant_ate
+            from fichapas_detalle
+                where rutmed = v_reg.rutmed and 
+                to_char(fechaconsulta,'mmyyyy') = :periodo;
+--Sueldo base                
+            v_sbase:= v_cant_ate * v_reg.precio;
+            if v_reg.valor is not null then
+                v_sbase:= v_sbase + (v_cant_ate * v_reg.valor);
+            end if;
+        exception
+            when others then
+            v_mensaje:=sqlerrm;
+            insert into errores values (seq_error.nextval,'Acntidad de Atención',
+            v_mensaje);            
+        end;
+        if v_cant_ate > 0 then
+            begin
+                select porcentaje into v_p_ca 
+                from porce_cantidad_atenciones
+                where v_cant_ate between atencion_inf and atención_sup;
+-- B_Cantidad Atención                
+                v_mcan_ate:=round(v_sbase * v_p_ca /100,0);
+            exception
+                when others then
+                v_mensaje:=sqlerrm;
+                insert into errores values (seq_error.nextval,'Busca Porce Atenciones',
+                v_mensaje);            
+            end;
+        end if;
+-- Años de antiguedad
+        v_annos:=substr(:periodo,3,4) || substr(:periodo,1,2) -
+            to_char(v_reg.fecha_contrato,'yyyy');
+        v_antig:=round(v_sbase * v_annos/100,0);
+        begin
+            select porcentaje into v_p_ma 
+            from porce_monto_atenciones
+            where v_sbase between monto_inf and monto_sup;
+-- B_Monto Cantidad Atención                
+            v_mate:=round(v_sbase * v_p_ma /100,0);
+        exception
+            when others then
+            v_mensaje:=sqlerrm;
+            insert into errores values (seq_error.nextval,'Busca Monto Porcentaje',
+            v_mensaje);            
+        end;
+-- B. Distancia        
+        if v_reg.nom_ciudad <> 'Santiago' then
+            v_m_ciudad:=round(v_sbase * v_reg.porcentaje,0);
+        end if;
+--B Meta cumplida        
+        if v_sbase >= v_reg.monto_meta then
+            v_mmeta:=round(v_sbase * 5 / 100,0);
+        end if;
+-- B Escolaridad
+        v_suma_b:=0;
+        for v_Carga in cur_cargas(v_reg.rutmed) loop
+            begin
+                v_edad:=substr(:periodo,3,4) || substr(:periodo,1,2) -
+                    to_char(v_Carga.fecha_nac,'yyyymm');
+                select bono into v_bono from bono_escolar
+                    where v_edad between edad_inf and edad_sup;
+                v_suma_b:=v_suma_b + v_bono;
+            exception
+                when others then
+                    v_mensaje:=sqlerrm;
+                    insert into errores values (seq_error.nextval,'Busca Bono Escolar',
+                v_mensaje);            
+            end;
+        end loop;
+        begin
+            v_suma_total:=v_sbase + v_mcan_ate + v_antig +
+            v_mate + v_m_ciudad + v_mmeta + v_suma_b;
+            insert into remun_mensual_medico values (
+            :periodo, v_reg.rutmed, v_sbase, v_mcan_ate,v_antig,
+            v_mate, v_m_ciudad, v_mmeta, v_suma_b,v_suma_total);
+        exception
+            when others then
+                v_mensaje:=sqlerrm;
+                insert into errores values (seq_error.nextval,'Grabando',
+            v_mensaje);            
+        end;
+    end loop;
+end;

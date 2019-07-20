@@ -1,0 +1,73 @@
+create table cirugias2
+(
+folio number(7),
+fecha_operacion date,
+descuento number (8),
+neto number (8),
+iva number (8),
+total number (8),
+id_medico number (4),
+codigo_pac number (8)
+)
+
+declare
+v_folio cirugias.folio%type;
+v_fecha_operacion cirugias.fecha_operacion%type;
+v_descuento cirugias.descuento%type;
+v_neto cirugias.neto%type;
+v_iva cirugias.iva%type;
+v_total cirugias.total%type;
+v_neto2 cirugias.neto%type;
+v_iva2 cirugias.iva%type;
+v_total2 cirugias.total%type;
+v_id_medico cirugias.id_medico%type;
+v_codigo_pac cirugias.codigo_pac%type;
+v_contador number (2);
+begin
+
+select 
+    count(folio) 
+    into v_contador 
+from cirugias;
+
+for x in 1..v_contador loop
+select 
+case when   
+    descuento>=0 then 
+    total*0.05
+    when   
+    descuento>0.2 then
+       (case when
+       to_char(fecha_operacion, 'DAY')= 'DOMINGO' then
+        total*0.1
+        when to_char(fecha_operacion, 'DAY')= 'SABADO' then
+        total*0.05 end)
+    else 0
+     end into v_descuento from cirugias;
+end loop;
+
+select 
+    folio, fecha_operacion,
+    id_medico,codigo_pac
+    into v_folio,v_fecha_operacion,
+    v_id_medico, v_codigo_pac
+from cirugias;
+select total,neto
+into v_total,v_neto
+from cirugias;
+v_total2:=v_total+v_descuentos;
+v_iva2:=v_neto*v_iva/100;
+v_neto2:=v_total/1.19;
+end;
+
+insert into cirugias2 values
+(
+v_folio,
+v_fecha_operacion,
+v_descuento,
+v_neto,
+v_iva,
+v_total,
+v_id_medico,
+v_codigo_pac
+)
